@@ -35,14 +35,11 @@ spec:
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:
-    - metadata:
-        name: postgres-storage
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 1Gi
+  volumes:
+    - name: postgres-storage  # Must match the volume name in `volumeMounts`
+      PersistentVolumeClaim: 
+        claimName: db-pvc
+
 ---
 apiVersion: v1
 kind: Service
