@@ -15,12 +15,13 @@ spec:
     spec:
       containers:
         - name: web-api
-          image: 588932255754.dkr.ecr.ap-southeast-1.amazonaws.com/docker-images-repo:localprdblueimage
+          image: usaidrehan/bluelocalprd  # Updated image reference
+          imagePullPolicy: Always
           ports:
             - containerPort: 54107
           env:
             - name: DB_HOST
-              value: "db"
+              value: "postgres-service.stateful.svc.cluster.local"  # Updated service name for DB
             - name: DB_PORT
               value: "5432"
             - name: DB_USER
@@ -35,6 +36,8 @@ spec:
                   key: DB_PASSWORD
             - name: DB_NAME
               value: "PSO_BI_Dev"
+            - name: DB_CONNECTION_STRING
+              value: "postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)"  # Connection string
           livenessProbe:
             httpGet:
               path: /api/AppSettings/GetRecentLogs
@@ -60,4 +63,4 @@ spec:
     - protocol: TCP
       port: 9080
       targetPort: 54107
-  type: ClusterIP
+  type: ClusterIP  # Use LoadBalancer for external access
