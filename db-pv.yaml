@@ -3,14 +3,15 @@ kind: PersistentVolume
 metadata:
   name: db-pv
   labels:
-    type: local
+    app: postgres-db
 spec:
-  storageClassName: local-storage  # Custom storage class
   capacity:
-    storage: 2Gi  # 2GB Storage
+    storage: 2Gi
   accessModes:
-    - ReadWriteOnce  # Only one node can mount it at a time
-  volumeMode: Filesystem  # Default mode
-  persistentVolumeReclaimPolicy: Retain  # Prevents auto-deletion on PVC deletion
-  local:
-    path: /mnt/data/blue_db  # Host path for storage
+    - ReadWriteOnce
+  storageClassName: local-storage
+  hostPath:
+    path: /mnt/data/blue_db
+    type: DirectoryOrCreate
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
