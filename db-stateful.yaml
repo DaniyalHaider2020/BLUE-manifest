@@ -53,4 +53,7 @@ spec:
     - protocol: TCP
       port: 5432
       targetPort: 5432
-  type: ClusterIP
+      nodePort: 32080   # Exposed Port (Should be within 30000–32767)
+  type: NodePort
+  externalTrafficPolicy: Local 
+  
