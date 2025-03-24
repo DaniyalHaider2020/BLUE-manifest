@@ -64,7 +64,7 @@ spec:
     - protocol: TCP
       port: 9080
       targetPort: 54107
-      nodePort: 32080  # Chosen within valid range (30000–32767)
+      nodePort: 32070  # Chosen within valid range (30000–32767)
   type: NodePort
 
 
