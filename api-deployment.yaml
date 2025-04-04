@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: web-api
-          image: usaidrehan/bluelocalprd  # Updated image reference
+          # image: usaidrehan/bluelocalprd  # Updated image reference
+          image: usaidrehan/kashaflocal
           imagePullPolicy: Always
           ports:
             - containerPort: 54107
