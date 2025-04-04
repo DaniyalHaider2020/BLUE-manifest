@@ -38,6 +38,7 @@ spec:
               value: "PSO_BI_Dev"
             - name: DB_CONNECTION_STRING
               value: "postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)"  # Connection string
+              
           # livenessProbe:
           #   httpGet:
           #     path: /api/AppSettings/GetRecentLogs

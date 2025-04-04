@@ -31,7 +31,7 @@ spec:
                   name: db-secret
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
-              value: "PSO_BI_Dev"
+              value: "PSO_BI_Dev4"
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
