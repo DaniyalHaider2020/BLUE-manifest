@@ -21,18 +21,22 @@ spec:
           args:
             - |
               set -e
+              HOSTNAME=$(hostname)
               if [[ $(hostname) == *-1 ]]; then
-                echo "🔁 Initializing replica..."
+                echo "🔁 Initializing replica on $HOSTNAME..."
                 export PGPASSWORD=$REPLICATION_PASSWORD
-                if [ -z "$(ls -A /var/lib/postgresql/data)" ]; then
-                  pg_basebackup -h postgres-db-0.postgres-db.stateful.svc.cluster.local \
-                    -U $REPLICATION_USER \
-                    -D /var/lib/postgresql/data \
-                    -Fp -Xs -R -P
-                fi
+                # Clear any existing data and force re-sync
+                rm -rf /var/lib/postgresql/data/*
+                until pg_basebackup -h postgres-db-0.postgres-db.stateful.svc.cluster.local \
+                  -U $REPLICATION_USER \
+                  -D /var/lib/postgresql/data \
+                  -Fp -Xs -R -P; do
+                  echo "Waiting for master to be available..."
+                  sleep 5
+                done
+                echo "✅ Replica initialization complete"
               else
-                echo "🚀 Primary detected, generating init.sql..."
-                echo "CREATE USER $REPLICATION_USER REPLICATION LOGIN ENCRYPTED PASSWORD '$REPLICATION_PASSWORD';" > /docker-entrypoint-initdb.d/init.sql
+                echo "✅ Master pod ($HOSTNAME) detected — skipping replica setup."
               fi
           env:
             - name: REPLICATION_USER
@@ -93,6 +97,24 @@ spec:
           args:
             - "-c"
             - "config_file=/etc/postgresql/postgresql.conf"
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
       volumes:
         - name: postgres-storage
           persistentVolumeClaim:
@@ -102,7 +124,6 @@ spec:
             name: postgres-config
         - name: initdb
           emptyDir: {}
-
 
 ---
 apiVersion: v1
@@ -117,10 +138,9 @@ spec:
     - protocol: TCP
       port: 5432
       targetPort: 5432
-      nodePort: 32080   # Exposed Port (Should be within 30000–32767)
+      nodePort: 32080
   type: NodePort
-  externalTrafficPolicy: Local 
-
+  externalTrafficPolicy: Local
 
 ---
 apiVersion: v1
@@ -135,7 +155,6 @@ spec:
   ports:
     - port: 5432
 
-
 ---
 apiVersion: v1
 kind: Service
@@ -146,9 +165,8 @@ spec:
   selector:
     statefulset.kubernetes.io/pod-name: postgres-db-1
   ports:
-    - port: 5434
+    - port: 5432  # Changed to standard PostgreSQL port for consistency
       targetPort: 5432
       nodePort: 32081
   type: NodePort
   externalTrafficPolicy: Local
-
