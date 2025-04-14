@@ -5,7 +5,7 @@ metadata:
   namespace: stateful
 spec:
   serviceName: "postgres-db"
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: postgres-db
@@ -35,10 +35,22 @@ spec:
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
+            - name: config-volume
+              mountPath: /etc/postgresql/postgresql.conf
+              subPath: postgres.conf
+            - name: config-volume
+              mountPath: /etc/postgresql/pg_hba.conf
+              subPath: pg_hba.conf
+          args:
+            - "-c"
+            - "config_file=/etc/postgresql/postgresql.conf"
       volumes:
         - name: postgres-storage  # Must match the volume name in `volumeMounts`
           persistentVolumeClaim: 
             claimName: db-pvc
+        - name: config-volume
+          configMap:
+            name: postgres-config    
 
 ---
 apiVersion: v1
@@ -56,4 +68,35 @@ spec:
       nodePort: 32080   # Exposed Port (Should be within 30000–32767)
   type: NodePort
   externalTrafficPolicy: Local 
-  
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db
+  namespace: stateful
+spec:
+  clusterIP: None
+  selector:
+    app: postgres-db
+  ports:
+    - port: 5432
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-replica-public
+  namespace: stateful
+spec:
+  selector:
+    statefulset.kubernetes.io/pod-name: postgres-db-1
+  ports:
+    - port: 5434
+      targetPort: 5432
+      nodePort: 32081
+  type: NodePort
+  externalTrafficPolicy: Local
+
