@@ -14,6 +14,43 @@ spec:
       labels:
         app: postgres-db
     spec:
+      initContainers:
+        - name: setup-replica
+          image: postgres:16.4
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              if [[ $(hostname) == *-1 ]]; then
+                echo "🔁 Initializing replica..."
+                export PGPASSWORD=$REPLICATION_PASSWORD
+                if [ -z "$(ls -A /var/lib/postgresql/data)" ]; then
+                  pg_basebackup -h postgres-db-0.postgres-db.stateful.svc.cluster.local \
+                    -U $REPLICATION_USER \
+                    -D /var/lib/postgresql/data \
+                    -Fp -Xs -R -P
+                fi
+              else
+                echo "🚀 Primary detected, generating init.sql..."
+                echo "CREATE USER $REPLICATION_USER REPLICATION LOGIN ENCRYPTED PASSWORD '$REPLICATION_PASSWORD';" > /docker-entrypoint-initdb.d/init.sql
+              fi
+          env:
+            - name: REPLICATION_USER
+              valueFrom:
+                secretKeyRef:
+                  name: replication-secret
+                  key: REPLICATION_USER
+            - name: REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: replication-secret
+                  key: REPLICATION_PASSWORD
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+
       containers:
         - name: postgres-db
           image: postgres:16.4
@@ -32,6 +69,16 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               value: "PSO_BI_Dev4"
+            - name: REPLICATION_USER
+              valueFrom:
+                secretKeyRef:
+                  name: replication-secret
+                  key: REPLICATION_USER
+            - name: REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: replication-secret
+                  key: REPLICATION_PASSWORD
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
@@ -41,16 +88,21 @@ spec:
             - name: config-volume
               mountPath: /etc/postgresql/pg_hba.conf
               subPath: pg_hba.conf
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
           args:
             - "-c"
             - "config_file=/etc/postgresql/postgresql.conf"
       volumes:
-        - name: postgres-storage  # Must match the volume name in `volumeMounts`
-          persistentVolumeClaim: 
+        - name: postgres-storage
+          persistentVolumeClaim:
             claimName: db-pvc
         - name: config-volume
           configMap:
-            name: postgres-config    
+            name: postgres-config
+        - name: initdb
+          emptyDir: {}
+
 
 ---
 apiVersion: v1
