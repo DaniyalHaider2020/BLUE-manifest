@@ -15,6 +15,38 @@ spec:
         app: postgres-db
     spec:
       initContainers:
+        - name: init-data-dir
+          image: postgres:16.4
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              HOSTNAME=$(hostname)
+              if [[ $HOSTNAME == *-0 ]]; then
+                echo "Initializing primary database..."
+                mkdir -p /var/lib/postgresql/data
+                chown -R 999:999 /var/lib/postgresql/data
+                if [ -z "$(ls -A /var/lib/postgresql/data)" ]; then
+                  gosu postgres initdb -D /var/lib/postgresql/data
+                  # Create replication user
+                  echo "host replication replicator all md5" >> /var/lib/postgresql/data/pg_hba.conf
+                fi
+              else
+                echo "Replica pod detected - waiting for primary to be ready..."
+                until pg_isready -h postgres-db-0.postgres-db.stateful.svc.cluster.local -U postgres; do
+                  sleep 5
+                done
+              fi
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: POSTGRES_PASSWORD
+
         - name: setup-replica
           image: postgres:16.4
           command: ["/bin/bash", "-c"]
@@ -22,21 +54,19 @@ spec:
             - |
               set -e
               HOSTNAME=$(hostname)
-              if [[ $(hostname) == *-1 ]]; then
-                echo "🔁 Initializing replica on $HOSTNAME..."
-                export PGPASSWORD=$REPLICATION_PASSWORD
-                # Clear any existing data and force re-sync
+              if [[ $HOSTNAME == *-1 ]]; then
+                echo "Initializing replica..."
                 rm -rf /var/lib/postgresql/data/*
+                chown -R 999:999 /var/lib/postgresql/data
+                export PGPASSWORD=$REPLICATION_PASSWORD
                 until pg_basebackup -h postgres-db-0.postgres-db.stateful.svc.cluster.local \
-                  -U $REPLICATION_USER \
-                  -D /var/lib/postgresql/data \
-                  -Fp -Xs -R -P; do
-                  echo "Waiting for master to be available..."
+                      -U $REPLICATION_USER \
+                      -D /var/lib/postgresql/data \
+                      -Fp -Xs -R -P; do
+                  echo "Waiting for primary to be available for base backup..."
                   sleep 5
                 done
-                echo "✅ Replica initialization complete"
-              else
-                echo "✅ Master pod ($HOSTNAME) detected — skipping replica setup."
+                echo "Replica initialized successfully"
               fi
           env:
             - name: REPLICATION_USER
@@ -52,8 +82,6 @@ spec:
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
-            - name: initdb
-              mountPath: /docker-entrypoint-initdb.d
 
       containers:
         - name: postgres-db
@@ -73,16 +101,6 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               value: "PSO_BI_Dev4"
-            - name: REPLICATION_USER
-              valueFrom:
-                secretKeyRef:
-                  name: replication-secret
-                  key: REPLICATION_USER
-            - name: REPLICATION_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: replication-secret
-                  key: REPLICATION_PASSWORD
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
@@ -92,11 +110,6 @@ spec:
             - name: config-volume
               mountPath: /etc/postgresql/pg_hba.conf
               subPath: pg_hba.conf
-            - name: initdb
-              mountPath: /docker-entrypoint-initdb.d
-          args:
-            - "-c"
-            - "config_file=/etc/postgresql/postgresql.conf"
           readinessProbe:
             exec:
               command:
@@ -105,7 +118,6 @@ spec:
                 - postgres
             initialDelaySeconds: 5
             periodSeconds: 5
-            timeoutSeconds: 5
           livenessProbe:
             exec:
               command:
@@ -114,17 +126,23 @@ spec:
                 - postgres
             initialDelaySeconds: 30
             periodSeconds: 10
-            timeoutSeconds: 5
       volumes:
-        - name: postgres-storage
-          persistentVolumeClaim:
-            claimName: db-pvc
         - name: config-volume
           configMap:
             name: postgres-config
-        - name: initdb
-          emptyDir: {}
-
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-storage
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: local-storage
+        resources:
+          requests:
+            storage: 2Gi
+        selector:
+          matchLabels:
+            app: postgres-db
+            
 ---
 apiVersion: v1
 kind: Service
