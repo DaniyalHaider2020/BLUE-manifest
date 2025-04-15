@@ -14,3 +14,21 @@ spec:
   selector:  # This ensures PVC binds to db-pv
     matchLabels:
       app: postgres-db  # Must match PV labels
+
+
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: db-pvc
+#   namespace: stateful
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   volumeMode: Filesystem
+#   resources:
+#     requests:
+#       storage: 2Gi
+#   storageClassName: local-storage  # Must match PV's storage class
+#   selector:  # This ensures PVC binds to db-pv
+#     matchLabels:
+#       app: postgres-db  # Must match PV labels

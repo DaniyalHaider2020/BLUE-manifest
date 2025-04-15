@@ -5,7 +5,7 @@ metadata:
   namespace: stateful
 spec:
   serviceName: "postgres-db"
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: postgres-db
@@ -14,75 +14,6 @@ spec:
       labels:
         app: postgres-db
     spec:
-      initContainers:
-        - name: init-data-dir
-          image: postgres:16.4
-          command: ["/bin/bash", "-c"]
-          args:
-            - |
-              set -e
-              HOSTNAME=$(hostname)
-              if [[ $HOSTNAME == *-0 ]]; then
-                echo "Initializing primary database..."
-                mkdir -p /var/lib/postgresql/data
-                chown -R 999:999 /var/lib/postgresql/data
-                if [ -z "$(ls -A /var/lib/postgresql/data)" ]; then
-                  gosu postgres initdb -D /var/lib/postgresql/data
-                  # Create replication user
-                  echo "host replication replicator all md5" >> /var/lib/postgresql/data/pg_hba.conf
-                fi
-              else
-                echo "Replica pod detected - waiting for primary to be ready..."
-                until pg_isready -h postgres-db-0.postgres-db.stateful.svc.cluster.local -U postgres; do
-                  sleep 5
-                done
-              fi
-          volumeMounts:
-            - name: postgres-storage
-              mountPath: /var/lib/postgresql/data
-          env:
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: db-secret
-                  key: POSTGRES_PASSWORD
-
-        - name: setup-replica
-          image: postgres:16.4
-          command: ["/bin/bash", "-c"]
-          args:
-            - |
-              set -e
-              HOSTNAME=$(hostname)
-              if [[ $HOSTNAME == *-1 ]]; then
-                echo "Initializing replica..."
-                rm -rf /var/lib/postgresql/data/*
-                chown -R 999:999 /var/lib/postgresql/data
-                export PGPASSWORD=$REPLICATION_PASSWORD
-                until pg_basebackup -h postgres-db-0.postgres-db.stateful.svc.cluster.local \
-                      -U $REPLICATION_USER \
-                      -D /var/lib/postgresql/data \
-                      -Fp -Xs -R -P; do
-                  echo "Waiting for primary to be available for base backup..."
-                  sleep 5
-                done
-                echo "Replica initialized successfully"
-              fi
-          env:
-            - name: REPLICATION_USER
-              valueFrom:
-                secretKeyRef:
-                  name: replication-secret
-                  key: REPLICATION_USER
-            - name: REPLICATION_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: replication-secret
-                  key: REPLICATION_PASSWORD
-          volumeMounts:
-            - name: postgres-storage
-              mountPath: /var/lib/postgresql/data
-
       containers:
         - name: postgres-db
           image: postgres:16.4
@@ -104,45 +35,11 @@ spec:
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
-            - name: config-volume
-              mountPath: /etc/postgresql/postgresql.conf
-              subPath: postgres.conf
-            - name: config-volume
-              mountPath: /etc/postgresql/pg_hba.conf
-              subPath: pg_hba.conf
-          readinessProbe:
-            exec:
-              command:
-                - pg_isready
-                - -U
-                - postgres
-            initialDelaySeconds: 5
-            periodSeconds: 5
-          livenessProbe:
-            exec:
-              command:
-                - pg_isready
-                - -U
-                - postgres
-            initialDelaySeconds: 30
-            periodSeconds: 10
       volumes:
-        - name: config-volume
-          configMap:
-            name: postgres-config
-  volumeClaimTemplates:
-    - metadata:
-        name: postgres-storage
-      spec:
-        accessModes: [ "ReadWriteOnce" ]
-        storageClassName: local-storage
-        resources:
-          requests:
-            storage: 2Gi
-        selector:
-          matchLabels:
-            app: postgres-db
-            
+        - name: postgres-storage  # Must match the volume name in `volumeMounts`
+          persistentVolumeClaim: 
+            claimName: db-pvc
+
 ---
 apiVersion: v1
 kind: Service
@@ -156,35 +53,10 @@ spec:
     - protocol: TCP
       port: 5432
       targetPort: 5432
-      nodePort: 32080
+      nodePort: 32080   # Exposed Port (Should be within 30000–32767)
   type: NodePort
-  externalTrafficPolicy: Local
+  externalTrafficPolicy: Local 
+  
 
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres-db
-  namespace: stateful
-spec:
-  clusterIP: None
-  selector:
-    app: postgres-db
-  ports:
-    - port: 5432
 
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres-replica-public
-  namespace: stateful
-spec:
-  selector:
-    statefulset.kubernetes.io/pod-name: postgres-db-1
-  ports:
-    - port: 5432  # Changed to standard PostgreSQL port for consistency
-      targetPort: 5432
-      nodePort: 32081
-  type: NodePort
-  externalTrafficPolicy: Local
+  
