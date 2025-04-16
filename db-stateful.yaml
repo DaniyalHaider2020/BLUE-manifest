@@ -14,9 +14,11 @@ spec:
       labels:
         app: postgres-db
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
         - name: postgres-db
           image: postgres:16.4
+          args: ["-c", "config_file=/config/postgres.conf"]  # 👈 Load custom config
           ports:
             - containerPort: 5432
           env:
@@ -32,15 +34,23 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               value: "PSO_BI_Dev4"
+            - name: PGDATA
+              value: /var/lib/postgresql/data
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
+            - name: config-volume                     # 👈 Mount configMap
+              mountPath: /config
       volumes:
-        - name: postgres-storage  # Must match the volume name in `volumeMounts`
+        - name: postgres-storage
           persistentVolumeClaim: 
             claimName: db-pvc
+        - name: config-volume                         # 👈 Mount the ConfigMap here
+          configMap:
+            name: postgres-config
 
 ---
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -56,6 +66,66 @@ spec:
       nodePort: 32080   # Exposed Port (Should be within 30000–32767)
   type: NodePort
   externalTrafficPolicy: Local 
+
+
+# apiVersion: apps/v1
+# kind: StatefulSet
+# metadata:
+#   name: postgres-db
+#   namespace: stateful
+# spec:
+#   serviceName: "postgres-db"
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: postgres-db
+#   template:
+#     metadata:
+#       labels:
+#         app: postgres-db
+#     spec:
+#       containers:
+#         - name: postgres-db
+#           image: postgres:16.4
+#           ports:
+#             - containerPort: 5432
+#           env:
+#             - name: POSTGRES_USER
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: db-secret
+#                   key: POSTGRES_USER
+#             - name: POSTGRES_PASSWORD
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: db-secret
+#                   key: POSTGRES_PASSWORD
+#             - name: POSTGRES_DB
+#               value: "PSO_BI_Dev4"
+#           volumeMounts:
+#             - name: postgres-storage
+#               mountPath: /var/lib/postgresql/data
+#       volumes:
+#         - name: postgres-storage  # Must match the volume name in `volumeMounts`
+#           persistentVolumeClaim: 
+#             claimName: db-pvc
+
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: postgres-service
+#   namespace: stateful
+# spec:
+#   selector:
+#     app: postgres-db
+#   ports:
+#     - protocol: TCP
+#       port: 5432
+#       targetPort: 5432
+#       nodePort: 32080   # Exposed Port (Should be within 30000–32767)
+#   type: NodePort
+#   externalTrafficPolicy: Local 
   
 
 

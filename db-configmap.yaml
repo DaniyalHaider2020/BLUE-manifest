@@ -5,29 +5,51 @@ metadata:
   namespace: stateful
 data:
   postgres.conf: |
-    # Connection Settings
     listen_addresses = '*'
     port = 5432
-    
-    # Replication Settings
     wal_level = replica
+    archive_mode = on
+    archive_command = 'test ! -f /var/lib/postgresql/archive/%f && cp %p /var/lib/postgresql/archive/%f'
     max_wal_senders = 10
     wal_keep_size = 64
     hot_standby = on
     max_replication_slots = 10
-    
-    # Archive Settings
-    archive_mode = on
-    archive_command = 'test ! -f /var/lib/postgresql/archive/%f && cp %p /var/lib/postgresql/archive/%f'
-    
-    # Standby Settings
-    primary_conninfo = 'user=replicator password=Qbs!23 host=postgres-db-0.postgres-db.stateful.svc.cluster.local port=5432 sslmode=prefer'
-    primary_slot_name = 'replica_slot'
-    restore_command = 'cp /var/lib/postgresql/archive/%f %p'
-    recovery_target_timeline = 'latest'
-
   pg_hba.conf: |
-    # TYPE  DATABASE        USER            ADDRESS                 METHOD
-    host    all             postgres        all                     md5
-    host    replication     replicator      all                     md5
     host    all             all             all                     md5
+    host    replication     replicator      all                     md5
+
+
+
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: postgres-config
+#   namespace: stateful
+# data:
+#   postgres.conf: |
+#     # Connection Settings
+#     listen_addresses = '*'
+#     port = 5432
+    
+#     # Replication Settings
+#     wal_level = replica
+#     max_wal_senders = 10
+#     wal_keep_size = 64
+#     hot_standby = on
+#     max_replication_slots = 10
+    
+#     # Archive Settings
+#     archive_mode = on
+#     archive_command = 'test ! -f /var/lib/postgresql/archive/%f && cp %p /var/lib/postgresql/archive/%f'
+    
+#     # Standby Settings
+#     primary_conninfo = 'user=replicator password=Qbs!23 host=postgres-db-0.postgres-db.stateful.svc.cluster.local port=5432 sslmode=prefer'
+#     primary_slot_name = 'replica_slot'
+#     restore_command = 'cp /var/lib/postgresql/archive/%f %p'
+#     recovery_target_timeline = 'latest'
+
+#   pg_hba.conf: |
+#     # TYPE  DATABASE        USER            ADDRESS                 METHOD
+#     host    all             postgres        all                     md5
+#     host    replication     replicator      all                     md5
+#     host    all             all             all                     md5
